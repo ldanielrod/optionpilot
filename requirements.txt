@@ -1,0 +1,5 @@
+alpaca-py>=0.44.0
+psycopg2-binary
+pandas
+python-dotenv
+claude-agent-sdk
