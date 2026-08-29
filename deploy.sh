@@ -4,7 +4,8 @@
 set -euo pipefail
 
 REMOTE_HOST="${REMOTE_HOST:-ldanielrod@192.168.100.229}"
-REMOTE_PATH="/opt/optionpilot"
+# home dir, not /opt: the deploy user has no passwordless sudo on the server
+REMOTE_PATH="/home/ldanielrod/optionpilot"
 
 echo "==> rsync to $REMOTE_HOST:$REMOTE_PATH"
 rsync -az --delete \

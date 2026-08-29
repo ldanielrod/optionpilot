@@ -49,3 +49,25 @@ Plan aprobado: `/Users/apple/.claude/plans/fluttering-swinging-tide.md`
 - Keys en .env están ENTRE COMILLAS — strip al extraer por shell
 - Snapshots de strikes ilíquidos vienen sin griegas (delta=None) — tolerar en executor y filtrar por OI
 - Cuenta TEST = paper actual del bot (PA3AY0UVTI8Y, equity ~$107k, options level 3)
+
+## Día 2 real (sáb 29) — hecho
+- [x] Postgres local dev (docker, 5433) + schema + risk_state helpers probados
+- [x] main.py refactor: decision_cycle() extraído y testeable
+- [x] Ciclo completo con DB y EXECUTE=0 vía código real de main: OK (AAPL+NVDA CSP dry-run)
+- [x] Capa LLM completa: decision_schema, prompts, llm_trader (Agent SDK + alpaca-mcp-server stdio)
+- [x] guardrails.py + tests unitarios (8 violaciones detectadas + caso limpio) — ALL PASSED
+- [x] Shadow session real: LLM eligió NVDA260918P00210000 δ-0.302 con tesis sólida (18 turnos, $1.06)
+- [x] Dockerfile (py3.11+node20+claude-code CLI+mcp-server) + compose + deploy.sh
+- [x] Desplegado al server en ~/optionpilot (NO /opt: sin sudo passwordless) — agente corriendo EXECUTE=0
+- [x] REPO MOVIDO a ~/Projects/optionpilot (iCloud evictaba archivos en Documents, Errno 89)
+
+## Lunes 31 (mercado abre)
+- [ ] Verificar ciclos dry-run del fin de semana en logs del server
+- [ ] EXECUTE=1 en TEST → 1 CSP real de validación
+- [ ] Keys de competición + ANTHROPIC_API_KEY al .env del server → LLM_ENABLED=1
+- [ ] Primera operación en cuenta de competición
+
+## Notas nuevas
+- Disco del Mac al 98% (4.6GB libres) — causa cuelgues de FS; usuario debe liberar espacio
+- Costo LLM: ~$1/sesión (18 turnos) → presupuestar ~$3-10/día live
+- Puerto 5433 ocupado en server → postgres de optionpilot sin puerto al host

@@ -8,8 +8,8 @@ services:
       - POSTGRES_DB=${POSTGRES_DB:-optionpilot}
     volumes:
       - optionpilot_pgdata:/var/lib/postgresql/data
-    ports:
-      - "5433:5432"   # LAN access for inspection; prod postgres keeps 5432
+    # no host port: internal-only (inspect via `docker exec optionpilot_postgres psql`);
+    # 5433 on the server is already taken and local dev uses its own container
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-optionpilot} -d ${POSTGRES_DB:-optionpilot}"]
       interval: 10s
