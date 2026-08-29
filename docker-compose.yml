@@ -1,0 +1,38 @@
+services:
+  optionpilot_postgres:
+    image: postgres:15-alpine
+    container_name: optionpilot_postgres
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-optionpilot}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-optionpilot}
+      - POSTGRES_DB=${POSTGRES_DB:-optionpilot}
+    volumes:
+      - optionpilot_pgdata:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"   # LAN access for inspection; prod postgres keeps 5432
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-optionpilot} -d ${POSTGRES_DB:-optionpilot}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  optionpilot_agent:
+    build: .
+    container_name: optionpilot_agent
+    env_file: .env
+    environment:
+      - POSTGRES_HOST=optionpilot_postgres
+      - POSTGRES_PORT=5432
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    volumes:
+      - ./reports:/app/reports
+    depends_on:
+      optionpilot_postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  optionpilot_pgdata:
