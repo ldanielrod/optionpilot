@@ -67,6 +67,46 @@ def count_structures_today() -> int:
         return 999  # fail closed: no DB means no new entries
 
 
+def decision_cycle(trading, scanner, builder, executor, llm_trader, pm,
+                   ledger, equity: float) -> None:
+    events = scanner.scan()
+    for sym, ev in events.items():
+        print(f"  {sym}: {ev.signal} conf={ev.info.get('confidence')} "
+              f"new_bar={ev.is_new_bar}")
+    open_state = build_open_state(trading)
+    mandates = builder.build(events, equity, open_state)
+    for m in mandates:
+        allowed, why = pm.can_trade(m.underlying)
+        if not allowed:
+            ledger.log_decision(m.underlying, m.strategy, "SKIP", why)
+            continue
+        use_llm = llm_trader is not None and db.llm_is_enabled(MARKET)
+        if use_llm:
+            result = llm_trader.execute(m, execute=CONFIG.execute)
+        else:
+            result = executor.execute(m, execute=CONFIG.execute)
+        print(f"[main] {m.strategy} {m.underlying}: "
+              f"{result.reason} {result.occ_symbol or ''}")
+        if result.ok and result.reason == "filled":
+            pm.record_trade(m.underlying)
+            premium = (result.fill_price or 0) * 100 * m.qty
+            ledger.log_trade(
+                symbol=m.underlying, occ_symbol=result.occ_symbol,
+                strategy=m.strategy,
+                side="buy_to_open" if m.strategy == "LONG_CALL" else "sell_to_open",
+                qty=m.qty, price=result.fill_price or 0,
+                premium=premium, delta_at_entry=result.delta,
+                dte=result.dte,
+                reason=m.signal_context.get("reason", ""),
+                client_order_id=result.client_order_id or m.client_order_id,
+                broker_order_id=result.order_id,
+                equity_before=equity)
+        else:
+            ledger.log_decision(
+                m.underlying, m.strategy, "NO_FILL", result.reason,
+                details=m.to_dict())
+
+
 def due_decision_slot(done: set) -> str | None:
     now = datetime.now(ET)
     hhmm = f"{now.hour:02d}:{now.minute:02d}"
@@ -138,42 +178,8 @@ def main() -> None:
             if slot:
                 slots_done.add(slot)
                 print(f"[main] decision cycle {slot} (equity=${equity:,.2f})")
-                events = scanner.scan()
-                for sym, ev in events.items():
-                    print(f"  {sym}: {ev.signal} conf={ev.info.get('confidence')} "
-                          f"new_bar={ev.is_new_bar}")
-                open_state = build_open_state(trading)
-                mandates = builder.build(events, equity, open_state)
-                for m in mandates:
-                    allowed, why = pm.can_trade(m.underlying)
-                    if not allowed:
-                        ledger.log_decision(m.underlying, m.strategy, "SKIP", why)
-                        continue
-                    use_llm = llm_trader is not None and db.llm_is_enabled(MARKET)
-                    if use_llm:
-                        result = llm_trader.execute(m, execute=CONFIG.execute)
-                    else:
-                        result = executor.execute(m, execute=CONFIG.execute)
-                    print(f"[main] {m.strategy} {m.underlying}: "
-                          f"{result.reason} {result.occ_symbol or ''}")
-                    if result.ok and result.reason == "filled":
-                        pm.record_trade(m.underlying)
-                        premium = (result.fill_price or 0) * 100 * m.qty
-                        ledger.log_trade(
-                            symbol=m.underlying, occ_symbol=result.occ_symbol,
-                            strategy=m.strategy,
-                            side="buy_to_open" if m.strategy == "LONG_CALL" else "sell_to_open",
-                            qty=m.qty, price=result.fill_price or 0,
-                            premium=premium, delta_at_entry=result.delta,
-                            dte=result.dte,
-                            reason=m.signal_context.get("reason", ""),
-                            client_order_id=result.client_order_id or m.client_order_id,
-                            broker_order_id=result.order_id,
-                            equity_before=equity)
-                    else:
-                        ledger.log_decision(
-                            m.underlying, m.strategy, "NO_FILL", result.reason,
-                            details=m.to_dict())
+                decision_cycle(trading, scanner, builder, executor, llm_trader,
+                               pm, ledger, equity)
 
             time.sleep(CONFIG.reconcile_seconds)
         except KeyboardInterrupt:
