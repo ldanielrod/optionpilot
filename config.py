@@ -41,10 +41,22 @@ class Config:
     max_spread_pct_of_mid: float = 0.10
     max_spread_abs_low_priced: float = 0.15  # for options under $1.50
 
+    # Volatility risk premium filter. Selling a put is a bet that implied vol
+    # is rich relative to what the underlying actually delivers. Without this
+    # check the strategy sells premium on a directional signal alone, which is
+    # a different and unsupported claim. Require IV to beat 20-day realized
+    # vol by this ratio, or no mandate is issued.
+    min_iv_over_realized: float = 1.10
+    realized_vol_window: int = 20
+
     # Account-level caps
     max_new_structures_per_day: int = 3
     max_structures_per_underlying_per_day: int = 1
     max_concurrent_short_puts: int = 6
+    # Strike notional understates the real exposure: six 0.30-delta puts on
+    # correlated megacaps carry ~40% of equity in long-delta equivalent, all in
+    # one factor. Cap the aggregate delta, not just the cash committed.
+    max_aggregate_delta_pct: float = 0.25
     # One CSP contract on a megacap is 20-35% of a $100k account in strike
     # notional — a tighter per-name cap can't fit a single contract (found in
     # dry run). The binding constraint is the 60% total cap below.

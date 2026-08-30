@@ -67,6 +67,12 @@ def validate_order_against_mandate(order, mandate: OptionMandate,
                            f"strike {occ.strike} > cap {mandate.max_strike}"))
 
     if quote is not None:
+        iv = quote.get("iv")
+        if mandate.min_iv is not None and iv is not None:
+            # 10% relative tolerance: IV moves between the executor's read and ours
+            if iv < mandate.min_iv * 0.90:
+                v.append(Violation("iv_below_floor",
+                                   f"IV {iv:.3f} < floor {mandate.min_iv:.3f}"))
         d = quote.get("delta")
         if d is not None:
             lo, hi = mandate.delta_band

@@ -54,6 +54,9 @@ def select_contract(candidates: List[ContractQuote],
             continue
         if mandate.max_strike is not None and c.strike > mandate.max_strike:
             continue
+        # implied vol below the floor: not being paid for the risk taken
+        if mandate.min_iv is not None and (c.iv is None or c.iv < mandate.min_iv):
+            continue
         viable.append(c)
     if not viable:
         return None

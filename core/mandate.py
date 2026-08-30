@@ -21,6 +21,9 @@ class OptionMandate:
     max_strike: Optional[float]       # CSP: strike*100*qty must fit notional cap
     client_order_id: str
     signal_context: dict = field(default_factory=dict)
+    # IV floor: realized vol x the required premium ratio. A contract below it
+    # is not paying for the risk being taken, whatever the signal says.
+    min_iv: Optional[float] = None
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
     def to_dict(self) -> dict:
@@ -46,6 +49,12 @@ class MandateBuilder:
             self._today = date.today()
             self._issued_today = []
 
+    def _log_skip(self, symbol: str, reason: str, details: dict) -> None:
+        print(f"[mandate] {symbol}: skipped ({reason}) {details}")
+        if self.ledger:
+            self.ledger.log_decision(symbol, "CSP", "NO_MANDATE", reason,
+                                     details=details)
+
     def build(self, events: dict, equity: float,
               open_state: dict) -> List[OptionMandate]:
         """
@@ -69,12 +78,38 @@ class MandateBuilder:
         short_puts: Dict[str, float] = open_state.get("short_puts", {})
         total_put_notional = sum(short_puts.values())
         max_total_notional = equity * cfg.max_total_short_put_notional_pct
+        open_delta_notional = open_state.get("short_put_delta_notional", 0.0)
+        max_delta_notional = equity * cfg.max_aggregate_delta_pct
 
         def csp_mandate(sym: str, ev, reason: str) -> Optional[OptionMandate]:
             if sym in self._issued_today or sym in short_puts:
                 return None
             if len(short_puts) >= cfg.max_concurrent_short_puts:
                 return None
+
+            # Aggregate delta cap. A new put in the band adds roughly
+            # mid_delta x 100 x spot of long-delta equivalent; on correlated
+            # megacaps that exposure compounds into a single factor bet that
+            # strike notional alone does not reveal.
+            mid_delta = sum(cfg.csp_delta_band) / 2
+            added_delta = mid_delta * 100 * ev.price
+            if open_delta_notional + added_delta > max_delta_notional:
+                self._log_skip(sym, "aggregate_delta_cap", {
+                    "open_delta_notional": round(open_delta_notional),
+                    "would_add": round(added_delta),
+                    "cap": round(max_delta_notional)})
+                return None
+
+            # Volatility risk premium: the contract must pay more implied vol
+            # than the underlying has actually been delivering.
+            min_iv = None
+            if ev.realized_vol is not None:
+                min_iv = ev.realized_vol * cfg.min_iv_over_realized
+            elif reason == "income_csp":
+                # no vol estimate and no signal to justify the trade
+                self._log_skip(sym, "no_realized_vol", {})
+                return None
+
             per_name_cap = equity * cfg.max_csp_notional_pct_per_underlying
             headroom = min(per_name_cap, max_total_notional - total_put_notional)
             max_strike = headroom / 100.0  # qty is fixed at 1
@@ -91,12 +126,15 @@ class MandateBuilder:
                 max_spread_pct_of_mid=cfg.max_spread_pct_of_mid,
                 max_strike=round(max_strike, 2),
                 client_order_id=make_order_id(cfg.client_order_prefix, sym),
+                min_iv=round(min_iv, 4) if min_iv else None,
                 signal_context={
                     "reason": reason, "signal": ev.signal, "price": ev.price,
                     "rsi": ev.info.get("rsi"), "adx": ev.info.get("adx"),
                     "atr_pct": ev.info.get("atr_pct"),
                     "confidence": ev.info.get("confidence"),
                     "net_score": ev.info.get("net_score"),
+                    "realized_vol_20d": (round(ev.realized_vol, 4)
+                                         if ev.realized_vol else None),
                 },
             )
 

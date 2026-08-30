@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Dict, Optional
 
+import numpy as np
 import pandas as pd
 
 from core.signals import generate_signal_enhanced
@@ -21,6 +22,22 @@ class SignalEvent:
     info: dict = field(default_factory=dict)
     bar_ts: Optional[str] = None
     is_new_bar: bool = True
+    realized_vol: Optional[float] = None   # annualized, from closed daily bars
+
+
+def realized_volatility(df: pd.DataFrame, window: int = 20) -> Optional[float]:
+    """Annualized close-to-close volatility over the last `window` bars.
+
+    This is the benchmark implied vol has to beat: without it, selling a put is
+    a directional bet wearing a premium-seller's costume.
+    """
+    if df is None or len(df) < window + 1:
+        return None
+    closes = df["close"].astype(float).tail(window + 1)
+    rets = np.log(closes / closes.shift(1)).dropna()
+    if len(rets) < window // 2 or not rets.std() > 0:
+        return None
+    return float(rets.std() * np.sqrt(252))
 
 
 def closed_bars(df: pd.DataFrame) -> pd.DataFrame:
@@ -66,8 +83,9 @@ class Scanner:
             self._last_bar[sym] = bar_key
 
             price = float(df.iloc[-1]["close"])
+            rv = realized_volatility(df, self.config.realized_vol_window)
             events[sym] = SignalEvent(
                 symbol=sym, signal=signal, price=price, info=info,
-                bar_ts=bar_key, is_new_bar=is_new,
+                bar_ts=bar_key, is_new_bar=is_new, realized_vol=rv,
             )
         return events

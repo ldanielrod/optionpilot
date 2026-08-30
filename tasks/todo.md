@@ -121,3 +121,20 @@ Dry-run + shadow ya validaron el camino completo; no hace falta arriesgar prod.
 Cada control ← la cicatriz que lo produjo: histéresis del halt (trampa absorbente),
 doble lectura de equity (83 reinicios por una lectura mala), señales en diario
 (churn intradía mataba el edge), close_position None vs 0.0 (2,915 trades fantasma).
+
+## Mejoras quant (30-ago noche, antes de la apertura)
+- [x] FILTRO DE PRIMA DE VOLATILIDAD: IV del contrato >= realizada 20d x 1.10.
+      Sin esto vendíamos prima sobre una señal direccional, que es otra apuesta.
+      Aplica al executor determinista, al prompt del LLM y a los guardrails.
+- [x] TOPE DE DELTA AGREGADA: 25% del equity en delta larga equivalente.
+      El notional de strike ocultaba que 6 puts a 0.30 delta sobre megacaps
+      correlacionadas son ~40% de exposición direccional en un solo factor.
+- [x] CSP de income exige estimación de vol (sin ella no hay tesis)
+- [x] 5 tests nuevos + suite completa pasando
+- [x] VALIDADO EN VIVO: AAPL pasa (rv 18.9% vs IV 26%), NVDA BLOQUEADO
+      (rv 46.5% vs IV 34-40% → vender vol por debajo de la realizada, IV crush
+      post-earnings). Claude había elegido NVDA el sábado: el filtro lo habría
+      parado. Evidencia directa de que el núcleo acota bien al LLM.
+- Limitación conocida: la realizada incluye el salto de earnings → filtro
+  conservador tras reportes. Documentar en el one-pager, no venderlo como
+  estimador sofisticado.

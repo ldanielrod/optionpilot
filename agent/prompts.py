@@ -40,6 +40,12 @@ def render_mandate(mandate: OptionMandate, execute: bool) -> str:
         "contract you would trade, and output the decision JSON with "
         '"action": "placed" replaced by "action": "shadow_pick".'
     )
+    iv_line = (
+        f"{mandate.min_iv:.1%} — the underlying's 20-day realized vol plus the "
+        "required premium. A contract below this floor is not paying for the "
+        "risk being taken; reject it however attractive it looks otherwise."
+        if mandate.min_iv else "n/a"
+    )
     return f"""## Mandate
 - Strategy: {mandate.strategy} — {strategy_desc}
 - Underlying: {mandate.underlying}
@@ -49,6 +55,7 @@ def render_mandate(mandate: OptionMandate, execute: bool) -> str:
 - Min open interest: {mandate.min_open_interest}
 - Max bid-ask spread: {mandate.max_spread_pct_of_mid:.0%} of mid
 - Max strike: {mandate.max_strike if mandate.max_strike is not None else "n/a"}
+- Min implied vol: {iv_line}
 - client_order_id (use verbatim): {mandate.client_order_id}
 
 ## Signal context (from the deterministic core)

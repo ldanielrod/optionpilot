@@ -33,8 +33,9 @@ ET = ZoneInfo("America/New_York")
 MARKET = "OPTIONPILOT"
 
 
-def build_open_state(trading: TradingClient) -> dict:
+def build_open_state(trading: TradingClient, options_data=None) -> dict:
     short_puts, stock_positions, covered_calls = {}, {}, set()
+    short_put_symbols = []
     for pos in trading.get_all_positions():
         qty = float(pos.qty)
         occ = parse_occ(pos.symbol)
@@ -44,10 +45,29 @@ def build_open_state(trading: TradingClient) -> dict:
         if occ.contract_type == "put" and qty < 0:
             short_puts[occ.underlying] = (
                 short_puts.get(occ.underlying, 0) + occ.strike * 100 * abs(qty))
+            short_put_symbols.append((pos.symbol, occ.strike, abs(qty)))
         elif occ.contract_type == "call" and qty < 0:
             covered_calls.add(occ.underlying)
+
+    # Long-delta equivalent carried by the open short puts. Strike stands in
+    # for spot (near-the-money at these deltas, ~3% error) to keep this to one
+    # batched quote call.
+    delta_notional = 0.0
+    if short_put_symbols and options_data is not None:
+        try:
+            quotes = options_data.get_quotes([s for s, _, _ in short_put_symbols])
+            for sym, strike, qty in short_put_symbols:
+                d = (quotes.get(sym) or {}).get("delta")
+                if d is not None:
+                    delta_notional += abs(d) * 100 * strike * qty
+        except Exception as e:
+            print(f"[main] delta notional unavailable ({e}) — using band midpoint")
+            mid = sum(CONFIG.csp_delta_band) / 2
+            delta_notional = sum(mid * 100 * k * q for _, k, q in short_put_symbols)
+
     return {
         "short_puts": short_puts,
+        "short_put_delta_notional": delta_notional,
         "stock_positions": stock_positions,
         "covered_calls": covered_calls,
         "structures_opened_today": count_structures_today(),
@@ -72,9 +92,10 @@ def decision_cycle(trading, scanner, builder, executor, llm_trader, pm,
                    ledger, equity: float) -> None:
     events = scanner.scan()
     for sym, ev in events.items():
+        rv = f"{ev.realized_vol:.1%}" if ev.realized_vol else "n/a"
         print(f"  {sym}: {ev.signal} conf={ev.info.get('confidence')} "
-              f"new_bar={ev.is_new_bar}")
-    open_state = build_open_state(trading)
+              f"rv20={rv} new_bar={ev.is_new_bar}")
+    open_state = build_open_state(trading, executor.options)
     mandates = builder.build(events, equity, open_state)
     for m in mandates:
         allowed, why = pm.can_trade(m.underlying)
