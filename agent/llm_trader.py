@@ -34,6 +34,10 @@ ALLOWED_TOOLS_READONLY = [
     "mcp__alpaca__get_stock_latest_quote",
     "mcp__alpaca__get_account_info",
     "mcp__alpaca__get_orders",
+    # Qualitative context the deterministic core cannot represent. This is the
+    # one input where a language model has an advantage over the price series,
+    # so it is the one worth adding — more information, not more models.
+    "mcp__alpaca__get_news",
 ]
 ALLOWED_TOOLS_EXECUTE = ALLOWED_TOOLS_READONLY + ["mcp__alpaca__place_option_order"]
 DISALLOWED_TOOLS = ["Bash", "Write", "Edit", "Read", "Glob", "Grep",

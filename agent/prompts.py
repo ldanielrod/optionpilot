@@ -22,7 +22,15 @@ no_trade decision and say why.
 
 Process: fetch the option chain for the mandated window, compare the 3-5 \
 plausible candidates on premium-per-unit-risk, IV, spread and OI, then act. \
-End your reply with the decision JSON in a ```json fence."""
+End your reply with the decision JSON in a ```json fence.
+
+Recent news on the underlying is available to you and the deterministic core \
+cannot read it — use it to judge whether the implied vol on offer reflects a \
+known, dated catalyst rather than ambient uncertainty, and prefer expiries \
+that do not straddle an unresolved one. Do not trade on a news view: the \
+direction has already been decided upstream. If the news makes the whole \
+mandate look unwise, say so in the thesis and return no_trade rather than \
+picking the least bad contract."""
 
 
 def render_mandate(mandate: OptionMandate, execute: bool) -> str:

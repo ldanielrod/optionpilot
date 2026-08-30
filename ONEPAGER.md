@@ -86,8 +86,19 @@ single factor. The aggregate delta cap exists because the notional caps hid that
   that verifies what the agent did.
 - **Alpaca MCP Server (official, v2)** — spawned as a stdio child process of the
   agent container, so credentials never leave the host. The session is granted a
-  whitelist of six read tools plus `place_option_order`; stock orders, account
-  configuration and close-all tools are withheld.
+  whitelist of seven read tools plus `place_option_order`; stock orders, account
+  configuration and close-all tools are withheld. `get_news` is among them
+  deliberately: qualitative context is the one input where a language model has
+  an advantage over the price series, and it is used to judge whether the vol on
+  offer reflects a dated catalyst — never to form a directional view, which has
+  already been decided upstream.
+- **Corporate actions feed** — splits are refused outright (the contract becomes
+  a non-standard deliverable). Ex-dividend dates block covered calls, where a
+  short call can be assigned early once its extrinsic value falls below the
+  dividend, but not short puts, where the adjustment is already in the price and
+  the date is passed to the selector as context. Alpaca's feed does not carry
+  earnings announcements, so that blackout remains a separately maintained
+  control — a gap named rather than papered over.
 - **Paper environment**, options level 3, dedicated competition account.
 
 Deployed as an isolated Docker stack (agent plus its own Postgres) with Telegram
@@ -129,7 +140,10 @@ of phantom trade records. Those are scars, not backtests.
   the architecture that lets a model choose inside it safely.
 - **Realized vol is trailing** and includes earnings gaps, so the filter is
   conservative right after a report. In the NVDA case that bias pointed the
-  right way; it will not always.
+  right way; it will not always. The proper measure is IV rank against the
+  contract's own implied-vol history, which Alpaca's historical option data
+  supports; changing the admission rule mid-competition, with no way to
+  validate it, was the larger risk. That is the first thing to build next.
 - **Single-leg only, by choice.** Level 3 permits spreads. Introducing an
   untested order class into a live account with four days left, before a single
   real fill had been observed, is how a working submission breaks. Spreads are

@@ -4,7 +4,7 @@ only picks WHICH contract inside those bounds.
 """
 import uuid
 from dataclasses import dataclass, asdict, field
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple
 
 
@@ -38,9 +38,10 @@ class MandateBuilder:
     """Turns SignalEvents + account state into mandates, enforcing every
     account-level cap BEFORE anything reaches an executor."""
 
-    def __init__(self, config, ledger=None):
+    def __init__(self, config, ledger=None, corporate_actions=None):
         self.config = config
         self.ledger = ledger
+        self.corp = corporate_actions
         self._today: Optional[date] = None
         self._issued_today: List[str] = []   # underlyings with a mandate today
 
@@ -71,6 +72,10 @@ class MandateBuilder:
         self._roll_day()
         cfg = self.config
         mandates: List[OptionMandate] = []
+        if self.corp is not None:
+            self.corp.refresh(list(events.keys()))
+        # the furthest expiry any mandate could reach
+        horizon = date.today() + timedelta(days=cfg.dte_max)
         budget = cfg.max_new_structures_per_day - open_state.get("structures_opened_today", 0)
         if budget <= 0:
             return mandates
@@ -81,10 +86,27 @@ class MandateBuilder:
         open_delta_notional = open_state.get("short_put_delta_notional", 0.0)
         max_delta_notional = equity * cfg.max_aggregate_delta_pct
 
+        def corporate_block(sym: str) -> Optional[str]:
+            """Splits rewrite the contract into a non-standard deliverable —
+            never open into one. Earnings are checked separately because
+            Alpaca's corporate actions feed does not carry them."""
+            if self.corp is not None:
+                split = self.corp.split_before(sym, horizon)
+                if split:
+                    return f"split_{split}"
+            earnings = cfg.earnings_dates.get(sym)
+            if earnings and date.today() <= date.fromisoformat(earnings) <= horizon:
+                return f"earnings_{earnings}"
+            return None
+
         def csp_mandate(sym: str, ev, reason: str) -> Optional[OptionMandate]:
             if sym in self._issued_today or sym in short_puts:
                 return None
             if len(short_puts) >= cfg.max_concurrent_short_puts:
+                return None
+            blocked = corporate_block(sym)
+            if blocked:
+                self._log_skip(sym, blocked, {"horizon": str(horizon)})
                 return None
 
             # Aggregate delta cap. A new put in the band adds roughly
@@ -135,6 +157,10 @@ class MandateBuilder:
                     "net_score": ev.info.get("net_score"),
                     "realized_vol_20d": (round(ev.realized_vol, 4)
                                          if ev.realized_vol else None),
+                    # context, not a veto: the ex-dividend drop is already in
+                    # the put's price, but the selector should know it is there
+                    "ex_dividend": (str(self.corp.ex_dividend_before(sym, horizon))
+                                    if self.corp else None),
                 },
             )
 
@@ -159,7 +185,20 @@ class MandateBuilder:
                 continue
             ev = events.get(sym)
             if ev is not None and ev.signal == "SELL":
-                continue  # exiting the stock instead; don't cap it with a call
+                continue  # ExitManager.manage_assigned_stock sells it instead
+            blocked = corporate_block(sym)
+            if blocked:
+                self._log_skip(sym, f"cc_{blocked}", {"horizon": str(horizon)})
+                continue
+            # Unlike a short put, a short CALL carries real early-assignment
+            # risk across an ex-dividend date: once extrinsic value falls below
+            # the dividend, exercising early to capture it is rational.
+            ex_div = (self.corp.ex_dividend_before(sym, horizon)
+                      if self.corp else None)
+            if ex_div:
+                self._log_skip(sym, "cc_ex_dividend_assignment_risk",
+                               {"ex_date": str(ex_div)})
+                continue
             mandates.append(OptionMandate(
                 strategy="CC", underlying=sym, qty=int(qty // 100),
                 delta_band=self.config.cc_delta_band,

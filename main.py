@@ -25,6 +25,7 @@ from core.exits import ExitManager
 from core.risk import PositionManager
 from core.occ import parse_occ
 from data.feed import AlpacaFeed
+from data.corporate_actions import CorporateActions
 from data.options import OptionsData
 import notify
 from ledger import Ledger
@@ -186,7 +187,8 @@ def main() -> None:
     options_data = OptionsData(api_key, api_secret)
     ledger = Ledger()
     scanner = Scanner(feed, CONFIG)
-    builder = MandateBuilder(CONFIG, ledger)
+    corp_actions = CorporateActions(api_key, api_secret)
+    builder = MandateBuilder(CONFIG, ledger, corp_actions)
     executor = DirectExecutor(api_key, api_secret, options_data)
     exits = ExitManager(trading, options_data, CONFIG, ledger)
 
