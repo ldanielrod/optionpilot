@@ -79,19 +79,23 @@ class Ledger:
                          decision: Optional[dict], reasoning: str,
                          num_turns: int, cost_usd: Optional[float],
                          validated: bool,
-                         validation_errors: Optional[list] = None) -> None:
+                         validation_errors: Optional[list] = None,
+                         deterministic_pick: Optional[dict] = None,
+                         agreed: Optional[bool] = None) -> None:
         conn = get_connection()
         try:
             c = conn.cursor()
             c.execute("""
             INSERT INTO llm_decisions (session_id, symbol, mandate, decision,
                                        reasoning, num_turns, cost_usd, validated,
-                                       validation_errors)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                                       validation_errors, deterministic_pick, agreed)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             """, (session_id, symbol, Json(mandate),
                   Json(decision) if decision else None, reasoning, num_turns,
                   cost_usd, validated,
-                  Json(validation_errors) if validation_errors else None))
+                  Json(validation_errors) if validation_errors else None,
+                  Json(deterministic_pick) if deterministic_pick else None,
+                  agreed))
             conn.commit()
         finally:
             conn.close()

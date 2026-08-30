@@ -98,7 +98,11 @@ class LLMTrader:
 
     # ── main entry ───────────────────────────────────────────────────
 
-    def execute(self, mandate: OptionMandate, execute: bool = True) -> ExecutionResult:
+    def execute(self, mandate: OptionMandate, execute: bool = True,
+                deterministic_pick: Optional[dict] = None) -> ExecutionResult:
+        """deterministic_pick: what the rule-based selector chose for this same
+        mandate — computed, never executed, and never shown to the LLM. Logged
+        beside the LLM's choice so "did the model add value?" is measurable."""
         session_id = f"llm-{uuid.uuid4().hex[:10]}"
         session_start = datetime.now(timezone.utc)
         prompt = render_mandate(mandate, execute=execute)
@@ -138,12 +142,20 @@ class LLMTrader:
                 fill_price=decision.get("limit_price"),
                 status="shadow")
 
+        llm_symbol = result.occ_symbol or (decision or {}).get("occ_symbol")
+        det_symbol = (deterministic_pick or {}).get("occ_symbol")
+        agreed = (llm_symbol == det_symbol) if (llm_symbol and det_symbol) else None
+
         self.ledger.log_llm_decision(
             session_id=session_id, symbol=mandate.underlying,
             mandate=mandate.to_dict(), decision=decision,
             reasoning=reasoning, num_turns=turns, cost_usd=cost,
             validated=not violations,
-            validation_errors=[f"{v.code}: {v.detail}" for v in violations] or None)
+            validation_errors=[f"{v.code}: {v.detail}" for v in violations] or None,
+            deterministic_pick=deterministic_pick, agreed=agreed)
+        if det_symbol and llm_symbol and not agreed:
+            print(f"[llm] DIVERGENCE {mandate.underlying}: "
+                  f"rules={det_symbol} llm={llm_symbol}")
 
         if violations:
             for v in violations:

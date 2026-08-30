@@ -83,7 +83,17 @@ def decision_cycle(trading, scanner, builder, executor, llm_trader, pm,
             continue
         use_llm = llm_trader is not None and db.llm_is_enabled(MARKET)
         if use_llm:
-            result = llm_trader.execute(m, execute=CONFIG.execute)
+            # Compute (never execute) the rule-based answer to the same
+            # mandate first, so the LLM's choice can be scored against a
+            # baseline. The LLM never sees it.
+            baseline = executor.execute(m, execute=False)
+            det_pick = {
+                "occ_symbol": baseline.occ_symbol, "limit": baseline.fill_price,
+                "delta": baseline.delta, "dte": baseline.dte,
+                "reason": baseline.reason,
+            } if baseline.ok else {"occ_symbol": None, "reason": baseline.reason}
+            result = llm_trader.execute(m, execute=CONFIG.execute,
+                                        deterministic_pick=det_pick)
         else:
             result = executor.execute(m, execute=CONFIG.execute)
         print(f"[main] {m.strategy} {m.underlying}: "

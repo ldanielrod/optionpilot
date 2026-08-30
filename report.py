@@ -75,13 +75,17 @@ def build_report(trading=None) -> str:
     lines += [""]
 
     llm = _rows("SELECT ts, symbol, decision->>'occ_symbol', reasoning, "
-                "cost_usd, validated FROM llm_decisions "
-                "WHERE ts::date = %s ORDER BY ts", (today,))
+                "cost_usd, validated, deterministic_pick->>'occ_symbol', agreed "
+                "FROM llm_decisions WHERE ts::date = %s ORDER BY ts", (today,))
     lines += [f"## LLM decisions today ({len(llm)})", ""]
-    for ts, sym, occ, reasoning, cost, validated in llm:
+    for ts, sym, occ, reasoning, cost, validated, det, agreed in llm:
         badge = "✓" if validated else "✗ GUARDRAIL"
-        lines += [f"### {ts:%H:%M} {sym} → `{occ}` {badge} (${cost or 0:.2f})",
-                  "", f"> {(reasoning or '').strip()}", ""]
+        lines += [f"### {ts:%H:%M} {sym} → `{occ}` {badge} (${cost or 0:.2f})", ""]
+        if det:
+            verdict = "same as rule-based pick" if agreed else \
+                      f"**diverged** from rule-based pick `{det}`"
+            lines += [f"Baseline: {verdict}", ""]
+        lines += [f"> {(reasoning or '').strip()}", ""]
 
     events = _rows("SELECT ts, symbol, event, action_taken FROM guardrail_events "
                    "WHERE ts::date = %s ORDER BY ts", (today,))

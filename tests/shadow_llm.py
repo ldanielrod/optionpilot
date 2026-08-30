@@ -42,9 +42,12 @@ print("== deterministic pick ==")
 det = DirectExecutor(key, secret, options_data).execute(mandate, execute=False)
 print(f"  {det.occ_symbol} limit={det.fill_price} delta={det.delta} dte={det.dte}")
 
+det_pick = {"occ_symbol": det.occ_symbol, "limit": det.fill_price,
+            "delta": det.delta, "dte": det.dte, "reason": det.reason}
+
 print("\n== LLM shadow session (this takes a minute) ==")
 trader = LLMTrader(CONFIG, Ledger(), options_data, trading)
-res = trader.execute(mandate, execute=False)
+res = trader.execute(mandate, execute=False, deterministic_pick=det_pick)
 print(f"\n  ok={res.ok} reason={res.reason}")
 print(f"  LLM pick: {res.occ_symbol} @ {res.fill_price}")
 

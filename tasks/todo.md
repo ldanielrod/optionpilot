@@ -107,3 +107,17 @@ Dry-run + shadow ya validaron el camino completo; no hace falta arriesgar prod.
 - Checklist oficial: 1 Crear equipo ✓ · 6 Prototipo ✓ · faltan 7 Presentación, 8 VIDEO, 9 Submit
 - Items 2-4 (invitar, Discord) opcionales para equipo solo, PERO hay 2 premios de
   participación en redes sociales → entrar al Discord y postear tiene valor aparte
+
+## Diferenciador #1: atribución LLM vs reglas (30-ago noche, LIVE antes de la apertura)
+- [x] Schema: llm_decisions + deterministic_pick JSONB + agreed BOOLEAN (ALTER idempotente)
+- [x] decision_cycle calcula la elección determinista (execute=False) en cada mandato LLM
+      y la registra junto a la de Claude — el LLM nunca la ve
+- [x] attribution.py: marca a mercado ambos contratos y calcula el edge atribuible al modelo
+- [x] report.py muestra divergencia por decisión
+- [x] Verificado end-to-end: divergencia detectada y registrada, attribution.py corre
+- [ ] Correr attribution.py el jueves con datos reales para el one-pager
+
+## Diferenciador #2 (jueves): guardrails trazados a incidentes reales de producción
+Cada control ← la cicatriz que lo produjo: histéresis del halt (trampa absorbente),
+doble lectura de equity (83 reinicios por una lectura mala), señales en diario
+(churn intradía mataba el edge), close_position None vs 0.0 (2,915 trades fantasma).

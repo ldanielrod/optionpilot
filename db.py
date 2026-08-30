@@ -93,6 +93,14 @@ def init_db():
     )
     """)
 
+    # The rule-based selector's answer to the same mandate, computed but never
+    # executed. This is what turns "did the LLM add value?" into a measurable
+    # question instead of a claim.
+    c.execute("ALTER TABLE llm_decisions "
+              "ADD COLUMN IF NOT EXISTS deterministic_pick JSONB")
+    c.execute("ALTER TABLE llm_decisions "
+              "ADD COLUMN IF NOT EXISTS agreed BOOLEAN")
+
     c.execute("""
     CREATE TABLE IF NOT EXISTS guardrail_events (
         id SERIAL PRIMARY KEY,
