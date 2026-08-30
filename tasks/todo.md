@@ -102,7 +102,7 @@ Dry-run + shadow ya validaron el camino completo; no hace falta arriesgar prod.
 - [x] Agente live: equity=$100,000 EXECUTE=True LLM=True
 
 ## Entrega en lablab (confirmado 30-ago)
-- [x] Equipo creado: `ldanielrodteam` — lablab.ai/ai-hackathons/alpaca-ai-trading-agents-hackathon/ldanielrodteam
+- [x] Equipo creado: `ldanielrod_team` (Alpaca AI Trading Agents Hackathon)
 - Deadline real mostrado: 4D 17H desde el 30-ago noche → cierra ~4-sep
 - Checklist oficial: 1 Crear equipo ✓ · 6 Prototipo ✓ · faltan 7 Presentación, 8 VIDEO, 9 Submit
 - Items 2-4 (invitar, Discord) opcionales para equipo solo, PERO hay 2 premios de
