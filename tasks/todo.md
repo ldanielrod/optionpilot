@@ -96,3 +96,7 @@ Dry-run + shadow ya validaron el camino completo; no hace falta arriesgar prod.
 - [x] Agente redesplegado: equity=$100,000 EXECUTE=True LLM=False
 - [ ] FALTA ANTHROPIC_API_KEY → LLM_ENABLED=1 (hoy corre con executor determinista)
 - [ ] Supervisar primer ciclo real: lunes 9:45 ET
+- [x] CLAUDE_CODE_OAUTH_TOKEN (créditos de suscripción, no API key) en .env + LLM_ENABLED=1
+- [x] SESIÓN LLM VERIFICADA DENTRO DEL CONTENEDOR: Node+CLI+OAuth+MCP stdio OK,
+      eligió NVDA260918P00210000 δ-0.30, 14 turnos, $0.66, validated=True
+- [x] Agente live: equity=$100,000 EXECUTE=True LLM=True
