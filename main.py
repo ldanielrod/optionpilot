@@ -27,6 +27,7 @@ from core.occ import parse_occ
 from data.feed import AlpacaFeed
 from data.options import OptionsData
 from ledger import Ledger
+from report import write_report
 
 ET = ZoneInfo("America/New_York")
 MARKET = "OPTIONPILOT"
@@ -107,13 +108,27 @@ def decision_cycle(trading, scanner, builder, executor, llm_trader, pm,
                 details=m.to_dict())
 
 
-def due_decision_slot(done: set) -> str | None:
+def due_decision_slot(done: set, grace_minutes: int = 45) -> str | None:
+    """The slot we are currently inside, if it hasn't run yet.
+
+    Slots more than `grace_minutes` old are marked done rather than fired:
+    a restart at 15:00 must not replay 09:45 and 12:30 back to back and burn
+    the whole day's structure budget in one minute.
+    """
     now = datetime.now(ET)
-    hhmm = f"{now.hour:02d}:{now.minute:02d}"
+    minutes_now = now.hour * 60 + now.minute
     for slot in CONFIG.decision_times_et:
         key = f"{date.today()}-{slot}"
-        if hhmm >= slot and key not in done:
-            return key
+        if key in done:
+            continue
+        h, m = (int(x) for x in slot.split(":"))
+        minutes_slot = h * 60 + m
+        if minutes_now < minutes_slot:
+            continue
+        if minutes_now - minutes_slot > grace_minutes:
+            done.add(key)  # missed it; don't replay
+            continue
+        return key
     return None
 
 
@@ -180,6 +195,7 @@ def main() -> None:
                 print(f"[main] decision cycle {slot} (equity=${equity:,.2f})")
                 decision_cycle(trading, scanner, builder, executor, llm_trader,
                                pm, ledger, equity)
+                write_report(trading)
 
             time.sleep(CONFIG.reconcile_seconds)
         except KeyboardInterrupt:

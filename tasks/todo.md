@@ -71,3 +71,19 @@ Plan aprobado: `/Users/apple/.claude/plans/fluttering-swinging-tide.md`
 - Disco del Mac al 98% (4.6GB libres) — causa cuelgues de FS; usuario debe liberar espacio
 - Costo LLM: ~$1/sesión (18 turnos) → presupuestar ~$3-10/día live
 - Puerto 5433 ocupado en server → postgres de optionpilot sin puerto al host
+
+## Día 3 real (dom 30) — hecho
+- [x] Soak del server verificado: 30h up, 1 error de red transitorio manejado por el loop
+- [x] Red-team con broker simulado: violación→cancel, filled violatoria→flatten, orden ajena→cancel, kill switch persistente — ALL PASSED
+- [x] report.py (equity, posiciones, trades, tesis del LLM, eventos guardrail) + conectado al loop
+- [x] ONEPAGER.md borrador (lógica IA / controles de riesgo / infra Alpaca)
+- [x] BUG ARREGLADO: due_decision_slot replayaba slots viejos tras restart a media sesión
+      (arranque a las 15:00 disparaba 09:45+12:30+15:15 seguidos) → grace de 45min + tests
+
+## ⚠️ RIESGO IDENTIFICADO — no ejecutar en cuenta TEST
+La cuenta TEST es la MISMA cuenta paper donde el bot de producción opera STOCKS.
+Vender una CSP real ahí: consume options buying power, mete posición corta en las
+lecturas de equity/cash del bot de prod → puede disparar sus safety checks
+(cash<0 → NO_NEW_BUYS) y descuadrar equity_audit.
+DECISIÓN: la primera ejecución real espera a la cuenta de COMPETICIÓN.
+Dry-run + shadow ya validaron el camino completo; no hace falta arriesgar prod.
