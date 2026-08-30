@@ -173,8 +173,14 @@ class MandateBuilder:
             ))
             self._issued_today.append(sym)
 
-        # 3. Income CSP: no signal fired, few structures open -> keep theta
-        #    flowing (a 7-day judged window cannot sit idle)
+        # 3. Premium-harvesting CSP. The directional signal gates entry, but it
+        #    is not the source of return: the return is the volatility risk
+        #    premium, which is available whether or not the trend model has an
+        #    opinion. When no signal fires and the book is below its target
+        #    number of structures, hold that exposure on the name with the
+        #    cleanest tape. Every other constraint still applies — most
+        #    importantly the IV floor, which is what makes this a paid risk
+        #    rather than activity for its own sake.
         open_structures = len(short_puts) + len(existing_ccs)
         if not mandates and open_structures < 3:
             candidates = [

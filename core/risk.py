@@ -1,4 +1,6 @@
-# Adapted from trading_bot position_manager.py (proven in production since Jun 2026).
+# Adapted from the author's production trading bot (position_manager.py), where
+# it has run continuously since Jun 2026. The comments below record the live
+# incidents that shaped each rule — operational scars, not backtest results.
 import time
 from typing import Dict, Tuple
 from config import Config
