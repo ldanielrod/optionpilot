@@ -87,3 +87,12 @@ lecturas de equity/cash del bot de prod → puede disparar sus safety checks
 (cash<0 → NO_NEW_BUYS) y descuadrar equity_audit.
 DECISIÓN: la primera ejecución real espera a la cuenta de COMPETICIÓN.
 Dry-run + shadow ya validaron el camino completo; no hace falta arriesgar prod.
+
+## Lun 31 — CUENTA DE COMPETICIÓN ACTIVA (configurado dom 30 noche)
+- [x] Cuenta competición creada: PA3TCQ3FZKYI, $100,000 exactos, options level 3, sin posiciones
+- [x] Keys en .env local + server; EXECUTE=1 (ejecución real activa)
+- [x] risk_state y tablas del server reseteadas (arrastraban peak_equity=$108,633 de la cuenta TEST
+      → habría dado un falso drawdown del 8% desde el arranque)
+- [x] Agente redesplegado: equity=$100,000 EXECUTE=True LLM=False
+- [ ] FALTA ANTHROPIC_API_KEY → LLM_ENABLED=1 (hoy corre con executor determinista)
+- [ ] Supervisar primer ciclo real: lunes 9:45 ET
