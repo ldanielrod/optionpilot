@@ -138,3 +138,21 @@ doble lectura de equity (83 reinicios por una lectura mala), señales en diario
 - Limitación conocida: la realizada incluye el salto de earnings → filtro
   conservador tras reportes. Documentar en el one-pager, no venderlo como
   estimador sofisticado.
+
+## Huecos técnicos cerrados (30-ago noche)
+- [x] HUECO DE RIESGO: acción asignada sin salida. exits.py se saltaba las
+      acciones ("lo maneja el mandato CC") y mandate.py se saltaba las señales
+      bajistas ("salimos de la acción") — ninguno lo hacía. 100 acciones son
+      20-30% de la cuenta sin gestión. Nuevo ExitManager.manage_assigned_stock:
+      liquida con señal SELL o stop del 8%, y CIERRA LA COVERED CALL PRIMERO
+      (vender la acción bajo una call abierta la dejaría desnuda). 6 tests.
+- [x] ALERTAS: notify.py con Telegram (reusa el bot de producción). Avisa de
+      arranque, fills, exits, liquidación de asignados, violaciones de
+      guardrail, kill switch, halt y resumen de ciclo. Probado: mensaje recibido.
+- [x] Healthcheck del contenedor vía heartbeat en /tmp (un loop atascado se ve
+      igual que uno sano desde fuera)
+- [x] Suite completa: 5 archivos de test, todos pasando
+- DESCARTADO conscientemente: spreads multi-pata (MLEG). Nivel 3 los permite
+  pero meter un tipo de orden nunca probado en una cuenta viva a 4 días del
+  cierre, sin haber visto un fill real, es como se rompe una entrega sana.
+  Se declara en el one-pager como decisión de disciplina de riesgo.

@@ -26,6 +26,7 @@ from core.risk import PositionManager
 from core.occ import parse_occ
 from data.feed import AlpacaFeed
 from data.options import OptionsData
+import notify
 from ledger import Ledger
 from report import write_report
 
@@ -89,14 +90,22 @@ def count_structures_today() -> int:
 
 
 def decision_cycle(trading, scanner, builder, executor, llm_trader, pm,
-                   ledger, equity: float) -> None:
+                   ledger, equity: float, exits=None, slot: str = "") -> dict:
     events = scanner.scan()
     for sym, ev in events.items():
         rv = f"{ev.realized_vol:.1%}" if ev.realized_vol else "n/a"
         print(f"  {sym}: {ev.signal} conf={ev.info.get('confidence')} "
               f"rv20={rv} new_bar={ev.is_new_bar}")
+    # Assigned shares need a signal to be judged against, so this runs here
+    # rather than in the 10-minute exit loop.
+    if exits is not None:
+        exits.manage_assigned_stock(events, execute=CONFIG.execute)
+
     open_state = build_open_state(trading, executor.options)
     mandates = builder.build(events, equity, open_state)
+    notify.on_cycle(slot, equity,
+                    " ".join(f"{s}:{e.signal[0]}" for s, e in events.items()),
+                    len(mandates))
     for m in mandates:
         allowed, why = pm.can_trade(m.underlying)
         if not allowed:
@@ -133,10 +142,14 @@ def decision_cycle(trading, scanner, builder, executor, llm_trader, pm,
                 client_order_id=result.client_order_id or m.client_order_id,
                 broker_order_id=result.order_id,
                 equity_before=equity)
+            notify.on_fill(m.strategy, m.underlying, result.occ_symbol, m.qty,
+                           result.fill_price or 0, premium, result.delta,
+                           result.dte)
         else:
             ledger.log_decision(
                 m.underlying, m.strategy, "NO_FILL", result.reason,
                 details=m.to_dict())
+            notify.on_no_trade(m.underlying, result.reason)
 
 
 def due_decision_slot(done: set, grace_minutes: int = 45) -> str | None:
@@ -183,6 +196,7 @@ def main() -> None:
     print(f"[main] start: equity=${equity0:,.2f} "
           f"options_level={getattr(acct, 'options_trading_level', '?')} "
           f"EXECUTE={CONFIG.execute} LLM={CONFIG.llm_enabled}")
+    notify.on_start(equity0, CONFIG.execute, CONFIG.llm_enabled)
 
     llm_trader = None
     if CONFIG.llm_enabled:
@@ -192,6 +206,13 @@ def main() -> None:
     slots_done: set = set()
     while True:
         try:
+            # liveness marker for the container healthcheck: a loop that is
+            # running but wedged looks identical to a healthy one from outside
+            try:
+                open("/tmp/heartbeat", "w").close()
+            except OSError:
+                pass
+
             clock = trading.get_clock()
             if not clock.is_open:
                 time.sleep(60)
@@ -212,6 +233,7 @@ def main() -> None:
                 if not ok2:
                     pm.trigger_emergency_halt(msg2)
                     ledger.log_decision("*", "HALT", "EMERGENCY_HALT", msg2)
+                    notify.on_halt(msg2)
                     print(f"[main] EMERGENCY HALT: {msg2}")
                     break
 
@@ -225,7 +247,7 @@ def main() -> None:
                 slots_done.add(slot)
                 print(f"[main] decision cycle {slot} (equity=${equity:,.2f})")
                 decision_cycle(trading, scanner, builder, executor, llm_trader,
-                               pm, ledger, equity)
+                               pm, ledger, equity, exits=exits, slot=slot)
                 write_report(trading)
 
             time.sleep(CONFIG.reconcile_seconds)

@@ -18,6 +18,7 @@ from alpaca.trading.requests import GetOrdersRequest
 from alpaca.trading.enums import QueryOrderStatus
 
 import db
+import notify
 from agent.decision_schema import parse_decision
 from agent.prompts import SYSTEM_PROMPT, render_mandate
 from core.executor_direct import ExecutionResult, TERMINAL
@@ -163,6 +164,8 @@ class LLMTrader:
                     session_id, mandate.underlying, v.code,
                     {"detail": v.detail, "mandate_id": mandate.client_order_id},
                     "cancelled")
+                notify.on_guardrail(mandate.underlying, v.code, v.detail,
+                                    "cancelled")
             still_enabled = db.record_llm_violation(
                 self.market, self.config.llm_violation_limit)
             if not still_enabled:
@@ -171,6 +174,7 @@ class LLMTrader:
                 self.ledger.log_guardrail_event(
                     session_id, mandate.underlying, "kill_switch",
                     {"limit": self.config.llm_violation_limit}, "llm_disabled")
+                notify.on_kill_switch(self.config.llm_violation_limit)
         return result
 
     # ── verification ─────────────────────────────────────────────────

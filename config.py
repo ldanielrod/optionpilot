@@ -80,6 +80,10 @@ class Config:
     force_close_dte: int = 1              # close anything <=1 DTE
     force_close_hour_et: int = 15         # ...by 15:30 ET
     force_close_minute_et: int = 30
+    # Shares arriving by put assignment are a large unhedged directional
+    # position (100 shares is 20-30% of this account). Exit on a bearish
+    # signal, or on this loss from the assignment price.
+    assigned_stock_stop_pct: float = 0.08
 
     # Cadence
     decision_times_et: Tuple[str, ...] = ("09:45", "12:30", "15:15")
