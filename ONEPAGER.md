@@ -144,6 +144,12 @@ of phantom trade records. Those are scars, not backtests.
   contract's own implied-vol history, which Alpaca's historical option data
   supports; changing the admission rule mid-competition, with no way to
   validate it, was the larger risk. That is the first thing to build next.
+- **The account size bounds the universe.** A cash-secured put on a $500 stock
+  needs $50k of collateral — half this account for one contract. MSFT and META
+  are therefore structurally unreachable here, and only two or three positions
+  fit at once. The mandate builder now refuses these rather than discovering it
+  at the broker; spreads would fix it properly, which is the strongest argument
+  for building them next.
 - **Single-leg only, by choice.** Level 3 permits spreads. Introducing an
   untested order class into a live account with four days left, before a single
   real fill had been observed, is how a working submission breaks. Spreads are

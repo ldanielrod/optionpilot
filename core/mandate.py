@@ -2,6 +2,7 @@
 (LLM or direct). The core decides WHAT to do and the hard bounds; the executor
 only picks WHICH contract inside those bounds.
 """
+import math
 import uuid
 from dataclasses import dataclass, asdict, field
 from datetime import date, datetime, timedelta, timezone
@@ -134,11 +135,34 @@ class MandateBuilder:
 
             per_name_cap = equity * cfg.max_csp_notional_pct_per_underlying
             headroom = min(per_name_cap, max_total_notional - total_put_notional)
+            # Collateral the broker will actually demand is strike x 100, and a
+            # resting order holds it. On day one three unfilled AAPL orders
+            # drained options buying power from $100k to $31k and the next
+            # mandate came back rejected — check what is really available.
+            obp = open_state.get("options_buying_power")
+            if obp is not None:
+                headroom = min(headroom, obp * cfg.buying_power_safety)
             max_strike = headroom / 100.0  # qty is fixed at 1
-            # a CSP in the mandated delta band sits near the money; if the cap
-            # can't fit ~80% of spot there is no sellable strike (MSFT/META on
-            # a $100k account land here — by design)
-            if max_strike < ev.price * 0.8:
+            # Is any strike in the delta band actually affordable? The furthest
+            # OTM strike the band allows sits at roughly
+            #     spot * exp(-z * sigma * sqrt(T))
+            # for z = 0.84 (the 0.20-delta end) — about 6% below spot on a
+            # 20%-vol name at 35 DTE, not the 20% a flat heuristic assumed. If
+            # the collateral cap lands below that, every contract in the band is
+            # out of reach and the mandate would only burn a session and come
+            # back rejected.
+            if ev.realized_vol:
+                t_years = cfg.dte_max / 252.0
+                z = 0.8416  # standard normal at the 0.20-delta end of the band
+                min_reachable = ev.price * math.exp(
+                    -z * ev.realized_vol * math.sqrt(t_years))
+            else:
+                min_reachable = ev.price * 0.90
+            if max_strike < min_reachable:
+                self._log_skip(sym, "collateral_below_delta_band", {
+                    "max_strike": round(max_strike, 2),
+                    "need_at_least": round(min_reachable, 2),
+                    "spot": round(ev.price, 2)})
                 return None
             return OptionMandate(
                 strategy="CSP", underlying=sym, qty=1,

@@ -14,8 +14,8 @@ import uuid
 from datetime import datetime, timezone
 from typing import List, Optional, Tuple
 
-from alpaca.trading.requests import GetOrdersRequest
-from alpaca.trading.enums import QueryOrderStatus
+from alpaca.trading.requests import GetOrdersRequest, LimitOrderRequest
+from alpaca.trading.enums import QueryOrderStatus, OrderSide, TimeInForce
 
 import db
 import notify
@@ -26,7 +26,9 @@ from core.guardrails import validate_order_against_mandate, Violation
 from core.mandate import OptionMandate
 from core.occ import parse_occ
 
-FILL_WAIT_S = 120
+# 60s, not 120: the cycle must have room to cancel and reprice before the
+# next mandate needs the collateral this order is holding.
+FILL_WAIT_S = 60
 ALLOWED_TOOLS_READONLY = [
     "mcp__alpaca__get_option_chain",
     "mcp__alpaca__get_option_snapshot",
@@ -236,22 +238,67 @@ class LLMTrader:
             return ExecutionResult(ok=False, reason="guardrail_violation",
                                    occ_symbol=order.symbol), violations
 
-        final = self._wait_fill(order.id)
         occ = parse_occ(order.symbol)
         dte = (occ.expiry - session_start.date()).days if occ else None
-        if final is not None and str(final.status).lower().endswith("filled"):
+
+        def filled(o):
+            return o is not None and str(o.status).lower().endswith("filled")
+
+        def result_from(o, oid, cid):
             return ExecutionResult(
                 ok=True, reason="filled", occ_symbol=order.symbol,
-                order_id=str(order.id), client_order_id=order.client_order_id,
-                filled_qty=float(final.filled_qty or 0),
-                fill_price=float(final.filled_avg_price or 0),
+                order_id=str(oid), client_order_id=cid,
+                filled_qty=float(o.filled_qty or 0),
+                fill_price=float(o.filled_avg_price or 0),
                 delta=(quote or {}).get("delta"), dte=dte,
-                status=str(final.status)), violations
+                status=str(o.status)), violations
 
+        final = self._wait_fill(order.id)
+        if filled(final):
+            return result_from(final, order.id, order.client_order_id)
+
+        # The model chose the contract; getting filled is the core's job. A
+        # limit at mid needs someone to cross it, which is how day one produced
+        # three cancelled orders and no position — and a resting order holds
+        # collateral, which starved the next mandate of buying power.
         self._cancel_quiet(order)
-        return ExecutionResult(ok=False, reason="unfilled_after_wait",
+        reprice = self._reprice(order, mandate)
+        if reprice is None:
+            return ExecutionResult(ok=False, reason="unfilled_no_reprice",
+                                   occ_symbol=order.symbol), violations
+        final2 = self._wait_fill(reprice.id)
+        if filled(final2):
+            return result_from(final2, reprice.id, reprice.client_order_id)
+
+        self._cancel_quiet(reprice)
+        return ExecutionResult(ok=False, reason="unfilled_after_reprice",
                                occ_symbol=order.symbol,
-                               status=str(final.status) if final else None), violations
+                               status=str(final2.status) if final2 else None), violations
+
+    def _reprice(self, order, mandate: OptionMandate):
+        """Resubmit the model's contract at the marketable side of the book:
+        the bid when we are selling, the ask when buying. Keeps the mandate's
+        client_order_id prefix so verification still recognises it as ours."""
+        try:
+            time.sleep(1.5)
+            quote = self.options.get_quotes([order.symbol]).get(order.symbol)
+            if not quote:
+                return None
+            selling = mandate.strategy != "LONG_CALL"
+            price = quote["bid"] if selling else quote["ask"]
+            if not price or price <= 0:
+                print(f"[llm] no reprice: dead quote on {order.symbol}")
+                return None
+            print(f"[llm] repricing {order.symbol} to {price} "
+                  f"({'bid' if selling else 'ask'})")
+            return self.trading.submit_order(LimitOrderRequest(
+                symbol=order.symbol, qty=mandate.qty,
+                side=OrderSide.SELL if selling else OrderSide.BUY,
+                time_in_force=TimeInForce.DAY, limit_price=round(price, 2),
+                client_order_id=f"{mandate.client_order_id}-r1"))
+        except Exception as e:
+            print(f"[llm] reprice failed: {e}")
+            return None
 
     def _wait_fill(self, order_id):
         deadline = time.time() + FILL_WAIT_S

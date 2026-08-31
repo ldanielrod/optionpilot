@@ -67,8 +67,15 @@ def build_open_state(trading: TradingClient, options_data=None) -> dict:
             mid = sum(CONFIG.csp_delta_band) / 2
             delta_notional = sum(mid * 100 * k * q for _, k, q in short_put_symbols)
 
+    obp = None
+    try:
+        obp = float(getattr(trading.get_account(), "options_buying_power", 0) or 0)
+    except Exception as e:
+        print(f"[main] options buying power unavailable ({e})")
+
     return {
         "short_puts": short_puts,
+        "options_buying_power": obp,
         "short_put_delta_notional": delta_notional,
         "stock_positions": stock_positions,
         "covered_calls": covered_calls,

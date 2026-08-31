@@ -57,6 +57,9 @@ class Config:
     # correlated megacaps carry ~40% of equity in long-delta equivalent, all in
     # one factor. Cap the aggregate delta, not just the cash committed.
     max_aggregate_delta_pct: float = 0.25
+    # Leave room for the broker's own margin arithmetic; a mandate sized to
+    # the last cent of buying power gets rejected at submission.
+    buying_power_safety: float = 0.95
     # One CSP contract on a megacap is 20-35% of a $100k account in strike
     # notional — a tighter per-name cap can't fit a single contract (found in
     # dry run). The binding constraint is the 60% total cap below.
