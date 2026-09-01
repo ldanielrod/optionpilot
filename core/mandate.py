@@ -253,11 +253,16 @@ class MandateBuilder:
                 and (ev.info.get("net_score") or 0) >= 0  # never sell puts into a bearish tape
             ]
             candidates.sort(key=lambda kv: -(kv[1].info.get("adx") or 0))
-            if candidates:
-                sym, ev = candidates[0]
+            # Walk the ranking instead of giving up on the first name: the
+            # preferred candidate is often refused for a reason that says
+            # nothing about the next one (collateral, IV floor, a split), and
+            # abandoning the whole branch over it left the book idle with room
+            # to spare.
+            for sym, ev in candidates:
                 m = csp_mandate(sym, ev, "income_csp")
                 if m:
                     mandates.append(m)
                     self._issued_today.append(sym)
+                    break
 
         return mandates[:budget]
