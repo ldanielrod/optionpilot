@@ -165,20 +165,73 @@ class ExitManager:
         return closed
 
     def _close(self, pos, action: ExitAction, mark: Optional[float]) -> None:
+        """Submit the closing order and record the round trip.
+
+        The close is waited on rather than fired and forgotten: without the
+        actual fill there is no realized P&L in our own ledger, only the
+        broker's equity number, and the report and attribution both read from
+        the ledger.
+        """
+        entry = abs(float(pos.avg_entry_price or 0))
+        is_short = float(pos.qty) < 0
         try:
             if mark and mark > 0 and action.reason != "expiry_close":
                 side = OrderSide.BUY if action.side == "buy_to_close" else OrderSide.SELL
-                self.trading.submit_order(LimitOrderRequest(
+                order = self.trading.submit_order(LimitOrderRequest(
                     symbol=action.occ_symbol, qty=action.qty, side=side,
                     time_in_force=TimeInForce.DAY, limit_price=round(mark, 2),
                     client_order_id=f"exit-{action.reason[:6]}-{int(time.time())}"))
             else:
                 # forced close or dead quote: take liquidity via close_position
-                self.trading.close_position(action.occ_symbol)
+                order = self.trading.close_position(action.occ_symbol)
+
+            fill = self._await_fill(getattr(order, "id", None))
+            exit_price = fill if fill is not None else mark
+            pnl = None
+            if exit_price is not None and entry > 0:
+                # a short is opened for a credit and closed for a debit
+                per_contract = (entry - exit_price) if is_short else (exit_price - entry)
+                pnl = per_contract * 100 * action.qty
+
             if self.ledger:
+                occ = parse_occ(action.occ_symbol)
+                self.ledger.log_trade(
+                    symbol=occ.underlying if occ else action.occ_symbol,
+                    occ_symbol=action.occ_symbol,
+                    strategy="CSP" if (occ and occ.contract_type == "put") else "CC",
+                    side=action.side, qty=action.qty,
+                    price=exit_price or 0,
+                    premium=-(exit_price or 0) * 100 * action.qty,
+                    delta_at_entry=None,
+                    dte=(occ.expiry - datetime.now(ET).date()).days if occ else None,
+                    reason=action.reason,
+                    client_order_id=getattr(order, "client_order_id", "") or "",
+                    broker_order_id=str(getattr(order, "id", "") or ""),
+                    equity_before=0.0, pnl=pnl)
                 self.ledger.log_decision(
                     symbol=action.occ_symbol, signal="EXIT", action=action.side,
-                    reason=action.reason, price=mark)
-            notify.on_exit(action.occ_symbol, action.reason, action.qty, mark)
+                    reason=action.reason, price=exit_price)
+            print(f"[exits] closed {action.occ_symbol} @ {exit_price} "
+                  f"(entry {entry}) pnl={pnl}")
+            notify.on_exit(action.occ_symbol, action.reason, action.qty,
+                           exit_price)
         except Exception as e:
             print(f"[exits] close {action.occ_symbol} failed: {e}")
+
+    def _await_fill(self, order_id, seconds: int = 45) -> Optional[float]:
+        """Filled average price, or None if it has not filled in time."""
+        if order_id is None:
+            return None
+        deadline = time.time() + seconds
+        while time.time() < deadline:
+            try:
+                o = self.trading.get_order_by_id(order_id)
+                if o.filled_avg_price:
+                    return float(o.filled_avg_price)
+                if str(o.status).lower().endswith(("canceled", "rejected", "expired")):
+                    return None
+            except Exception as e:
+                print(f"[exits] fill poll failed: {e}")
+                return None
+            time.sleep(3)
+        return None

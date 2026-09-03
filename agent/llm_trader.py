@@ -29,6 +29,8 @@ from core.occ import parse_occ
 # 60s, not 120: the cycle must have room to cancel and reprice before the
 # next mandate needs the collateral this order is holding.
 FILL_WAIT_S = 60
+TRANSIENT_RETRIES = 3      # total attempts, not extra ones
+TRANSIENT_BACKOFF_S = 12
 ALLOWED_TOOLS_READONLY = [
     "mcp__alpaca__get_option_chain",
     "mcp__alpaca__get_option_snapshot",
@@ -103,6 +105,31 @@ class LLMTrader:
                 turns = getattr(message, "num_turns", 0)
         return "\n".join(text_parts), cost, turns
 
+    def _session_with_retry(self, prompt: str, execute: bool):
+        """Retry a session that failed for a reason the server itself calls
+        temporary. A 529 during the judged window costs a decision, and the
+        API says outright to try again in a moment.
+
+        Only transient signatures are retried: a schema or mandate problem
+        would fail again identically and is handled downstream.
+        """
+        attempts = 0
+        while True:
+            attempts += 1
+            try:
+                return asyncio.run(self._run_session(prompt, execute=execute))
+            except Exception as e:
+                msg = str(e).lower()
+                transient = any(s in msg for s in (
+                    "529", "overloaded", "503", "502", "504", "timeout",
+                    "timed out", "connection", "rate limit", "429"))
+                if not transient or attempts >= TRANSIENT_RETRIES:
+                    raise
+                wait = TRANSIENT_BACKOFF_S * attempts
+                print(f"[llm] transient failure ({e}) — retry {attempts} "
+                      f"in {wait}s")
+                time.sleep(wait)
+
     # ── main entry ───────────────────────────────────────────────────
 
     def execute(self, mandate: OptionMandate, execute: bool = True,
@@ -115,8 +142,7 @@ class LLMTrader:
         prompt = render_mandate(mandate, execute=execute)
 
         try:
-            text, cost, turns = asyncio.run(
-                self._run_session(prompt, execute=execute))
+            text, cost, turns = self._session_with_retry(prompt, execute)
         except Exception as e:
             print(f"[llm] session failed: {e}")
             return ExecutionResult(ok=False, reason=f"llm_session_failed: {e}")
