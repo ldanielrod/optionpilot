@@ -123,17 +123,50 @@ intraday churn destroyed the edge in live trading; a failed close is
 distinguished from a flat close because conflating them once produced thousands
 of phantom trade records. Those are scars, not backtests.
 
+## Results — and the experiment that went against us
+
+**Account: $100,000 → $100,142.89 (+0.14%) over five sessions.** One completed
+round trip: a Sep-18 AAPL 310 put sold for $2.82 on Sep 1 and bought back at
+$1.39 on Sep 3 when it hit the 50%-of-premium profit take — **+$143 realized,
+closed autonomously**, no human in the loop from signal to exit. Five mandates
+reached the model; NVDA was refused every session by the volatility gate, whose
+realized vol ran 46% against 34–40% implied all week. Total LLM cost: $4.68.
+
+Now the part most submissions would leave out. Every mandate logged the contract
+the rule-based selector would have taken, computed at the same instant and never
+shown to the model. Marked to market on the four comparable pairs:
+
+| | Marked P&L |
+|---|---|
+| Claude's picks | +$726 |
+| Rule-based baseline | +$799 |
+| **Attributable to model choice** | **−$73** |
+
+The model disagreed with the rule on four of five mandates and, on this sample,
+its disagreements cost money. Two of the four went its way, two went against,
+and the two losses were larger. The pattern is legible: Claude repeatedly
+preferred nearer expiries for their tighter spreads, and in a week where the
+underlying drifted favourably, the extra duration the rule kept was worth more
+than the execution edge Claude bought.
+
+Four paired decisions establish nothing — the noise dwarfs the effect, exactly
+as stated below before the data came in. We report it because a comparison that
+is only credible when it flatters the author is not a comparison. And the
+architecture is unchanged by it: the layer that mattered most this week was the
+volatility gate, which is deterministic, and which vetoed the trade Claude
+reasoned about most persuasively.
+
 ## Limitations, stated plainly
 
 - **Five sessions is not evidence.** Short puts at 0.25 delta win most of the
   time individually and lose rarely and largely. A one-week sample of a
   short-premium strategy is very likely to look profitable and tells you almost
   nothing. Whatever P&L this account shows, it does not establish edge.
-- **The attribution experiment is a method, not a result.** Every mandate logs
-  both Claude's contract and the rule-based baseline for the same mandate,
-  computed at the same instant and never shown to the model (`attribution.py`).
-  With fewer than ten paired decisions it has no statistical power. It is
-  reported either way, including if the baseline wins.
+- **The attribution result above is a method, not a finding.** Four paired
+  decisions have no statistical power; the −$73 is noise, and would be noise had
+  it come out +$73. What the experiment demonstrates is that the question was
+  asked in a form that could answer it, and reported when the answer was
+  unflattering.
 - **The structure is conventional.** A cash-secured put at 0.25 delta is the most
   common retail options trade there is. The contribution here is not the
   structure; it is the gate that decides when the structure is worth selling and
