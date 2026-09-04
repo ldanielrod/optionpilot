@@ -9,7 +9,7 @@ constraints. Claude, connected to Alpaca's official MCP server, decides *which
 contract*. Everything the model does is re-read from the broker and audited
 against the mandate it was given.
 
-See **[ONEPAGER.md](ONEPAGER.md)** for the full write-up, including what each
+See **[ONEPAGER.md](ONEPAGER.md)** for the one-page summary and **[DESIGN.md](DESIGN.md)** for the full write-up, including what each
 layer actually contributed and where the approach is weak.
 
 ## Architecture
